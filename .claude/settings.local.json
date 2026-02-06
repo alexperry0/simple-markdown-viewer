@@ -1,0 +1,138 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Task",
+      "Glob",
+      "Grep",
+      "mcp__github__*",
+      "mcp__plugin_github_github__*",
+      "mcp__context7__*",
+      "mcp__plugin_context7_context7__*",
+      "Skill(create-pr)",
+      "Skill(post-fresh-eyes-review)",
+      "Skill(create-deferred-issues)",
+      "Skill(verify-pr-ready)",
+      "Skill(merge-pr)",
+      "Skill(ship)",
+      "Skill(self-review)",
+      "Skill(block-issue)",
+      "Skill(next-issue)",
+      "Skill(prioritize)",
+      "Skill(commit-commands:commit)",
+      "Skill(commit-commands:commit-push-pr)",
+      "Skill(commit-commands:clean_gone)",
+      "Skill(pr-review-toolkit:review-pr)",
+      "Skill(code-review:code-review)",
+      "Skill(feature-dev:feature-dev)",
+      "Skill(frontend-design:frontend-design)",
+      "Skill(hookify:list)",
+      "Skill(hookify:configure)",
+      "Skill(hookify:hookify)",
+      "Skill(hookify:help)",
+      "WebSearch",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/bash-safety.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/security-check.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/validate-pr-template.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/validate-pr-template.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_github_github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/validate-pr-template.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/require-fresh-eyes-review.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__github__merge_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/require-fresh-eyes-review.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_github_github__merge_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/require-fresh-eyes-review.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/validate-self-review.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/archive-plan.py"
+          }
+        ]
+      }
+    ]
+  }
+}
