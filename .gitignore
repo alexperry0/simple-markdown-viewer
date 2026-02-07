@@ -14,3 +14,19 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Node
+node_modules/
+
+# Tauri / Rust
+src-tauri/target/
+dist/
+
+# Generated
+src-tauri/gen/
+
+# Windows artifacts
+nul
+
+# User test data
+Portfolio_Analysis_*.md

@@ -56,29 +56,48 @@ Every meaningful code change needs tests appropriate to the change:
 ## Build Commands
 
 ```bash
-# Replace with your project's build commands
-dotnet build                # Build
-dotnet test                 # Test
-dotnet run                  # Run
+npm install                 # Install dependencies
+npm run tauri dev           # Dev mode with hot reload
+npm run tauri build         # Production build
 ```
 
 ---
 
 ## Project Overview
 
-<!-- Describe your project here -->
+A lightweight desktop markdown viewer built with Tauri. The motivation is simple: existing tools for viewing markdown files are bloated editors when all you need is a fast, reliable reader. This app opens `.md` files and renders them beautifully — nothing more, nothing less.
+
+**Core principles:**
+- **Read-only by design** — this is a viewer, not an editor
+- **Lightweight** — Tauri + system webview, not a full Chromium install
+- **Fast** — opens instantly, renders immediately
+- **Live** — watches the file on disk and re-renders on change
 
 ## Architecture
 
-<!-- Describe your architecture, key components, and patterns here -->
+```
+src/
+├── index.html              # Main window markup
+├── styles.css              # Markdown rendering styles
+├── main.js                 # Frontend logic (rendering, file handling)
+src-tauri/
+├── src/
+│   └── main.rs             # Tauri backend (file I/O, file watching, window management)
+├── Cargo.toml              # Rust dependencies
+├── tauri.conf.json         # Tauri configuration
+package.json                # Node dependencies (dev tooling)
+```
 
-## Configuration
-
-<!-- Describe configuration files, environment variables, secrets handling -->
+- **Frontend**: Vanilla HTML/CSS/JS. Markdown parsed and rendered in the webview.
+- **Backend (Rust/Tauri)**: Handles file reading, file system watching, and native dialogs.
+- **No frameworks**: No React, no bundler beyond what Tauri provides.
 
 ## Dependencies
 
-<!-- List key dependencies -->
+- **Tauri** — Desktop shell (system webview + Rust backend)
+- **marked** (or similar) — Markdown-to-HTML parsing
+- **highlight.js** — Code block syntax highlighting
+- **notify** (Rust crate) — File system watching
 
 ---
 

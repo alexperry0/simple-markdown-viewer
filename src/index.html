@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clive</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="vendor/github.min.css">
+</head>
+<body>
+    <!-- Empty state: shown when no file is loaded -->
+    <div id="empty-state">
+        <p>Open a Markdown file to get started</p>
+        <p>Drag & drop a .md file here, or click to open</p>
+        <button id="open-btn">Open File</button>
+    </div>
+
+    <!-- Markdown content: shown when a file is loaded -->
+    <article id="content" class="markdown-body" style="display:none;"></article>
+
+    <!-- Toolbar: tabs + open button (hidden when no tabs open) -->
+    <header id="toolbar" style="display:none;">
+        <div id="tabs-container"></div>
+        <button id="open-btn-toolbar" title="Open file">+</button>
+    </header>
+
+    <!-- Vendored libraries (no CDN, works offline) -->
+    <script src="vendor/marked.min.js"></script>
+    <script src="vendor/marked-highlight.min.js"></script>
+    <script src="vendor/highlight.min.js"></script>
+    <script src="vendor/purify.min.js"></script>
+    <script src="main.js?v=3"></script>
+</body>
+</html>
