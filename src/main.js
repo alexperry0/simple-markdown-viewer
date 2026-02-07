@@ -155,15 +155,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update window title
         const filename = path.split(/[\\/]/).pop();
         await getCurrentWindow().setTitle(filename + ' - Clive');
-
-        // Start watching this file
-        await invoke('watch_file', { path });
     }
 
-    function closeTab(path) {
+    async function closeTab(path) {
         if (!tabs.has(path)) return;
 
         tabs.delete(path);
+
+        // Stop watching the file
+        try { await invoke('unwatch_file', { path }); } catch (_) {}
 
         // Remove the tab element
         const tabElement = tabsContainer.querySelector(`[data-path="${CSS.escape(path)}"]`);
@@ -205,6 +205,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Add tab element to the bar
             const tabElement = createTabElement(path);
             tabsContainer.appendChild(tabElement);
+
+            // Start watching this file for changes
+            await invoke('watch_file', { path });
 
             // Switch to the new tab
             await switchToTab(path);

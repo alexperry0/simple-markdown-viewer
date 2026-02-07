@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -8,7 +9,7 @@ use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 
 struct WatcherState {
-    watcher: Mutex<Option<Debouncer<RecommendedWatcher>>>,
+    watchers: Mutex<HashMap<PathBuf, Debouncer<RecommendedWatcher>>>,
 }
 
 #[tauri::command]
@@ -34,6 +35,11 @@ async fn open_file_dialog(app: tauri::AppHandle) -> Result<Vec<String>, String> 
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()) {
+        Some(ref ext) if ext == "md" || ext == "markdown" => {}
+        _ => return Err("Only markdown files can be read".into()),
+    }
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
@@ -58,7 +64,9 @@ fn watch_file(
         Duration::from_millis(300),
         move |res: DebounceEventResult| {
             if let Ok(events) = res {
-                let matched = events.iter().any(|e| e.path == target_path);
+                let matched = events.iter().any(|e| {
+                    e.path.canonicalize().map_or(false, |p| p == target_path)
+                });
                 if matched {
                     let _ = app_handle.emit("file-changed", &emit_path);
                 }
@@ -72,9 +80,24 @@ fn watch_file(
         .watch(&watch_dir, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
 
-    // Replace any existing watcher (drops the old one, stopping it)
-    *state.watcher.lock().map_err(|e| e.to_string())? = Some(debouncer);
+    state
+        .watchers
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(target, debouncer);
 
+    Ok(())
+}
+
+#[tauri::command]
+fn unwatch_file(path: String, state: tauri::State<'_, WatcherState>) -> Result<(), String> {
+    if let Ok(target) = PathBuf::from(&path).canonicalize() {
+        state
+            .watchers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&target);
+    }
     Ok(())
 }
 
@@ -82,12 +105,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(WatcherState {
-            watcher: Mutex::new(None),
+            watchers: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             open_file_dialog,
             read_file,
             watch_file,
+            unwatch_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
