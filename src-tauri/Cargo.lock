@@ -2988,15 +2988,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
-name = "simple-markdown-viewer"
+name = "tally"
 version = "0.1.0"
 dependencies = [
- "notify-debouncer-mini",
- "serde",
- "serde_json",
  "tauri",
  "tauri-build",
- "tauri-plugin-dialog",
  "time",
 ]
 

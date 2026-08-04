@@ -57,47 +57,53 @@ Every meaningful code change needs tests appropriate to the change:
 
 ```bash
 npm install                 # Install dependencies
-npm run tauri dev           # Dev mode with hot reload
-npm run tauri build         # Production build
+npm test                    # Unit tests (node:test, Node 20+)
+npm run tauri:dev           # Desktop dev mode with hot reload (needs Rust)
+npm run dev:web             # Frontend only, in a browser at localhost:5173
+npm run tauri:build         # Production desktop build
 ```
 
 ---
 
 ## Project Overview
 
-A lightweight desktop markdown viewer built with Tauri. The motivation is simple: existing tools for viewing markdown files are bloated editors when all you need is a fast, reliable reader. This app opens `.md` files and renders them beautifully — nothing more, nothing less.
+**Tally** — a lightweight, local-first calorie & workout tracker, built with Tauri.
+(This repo was previously a markdown viewer; it has been fully repurposed.)
+
+Users log foods to meals (with real nutrition data from public food databases),
+log strength/cardio workouts, and see daily budgets and 14-day trends.
 
 **Core principles:**
-- **Read-only by design** — this is a viewer, not an editor
-- **Lightweight** — Tauri + system webview, not a full Chromium install
-- **Fast** — opens instantly, renders immediately
-- **Live** — watches the file on disk and re-renders on change
+- **Local-first** — all data in localStorage; JSON export/import for backup. No accounts, no server.
+- **Lightweight** — Tauri + system webview; vanilla JS, no frameworks, no build step
+- **Pluggable food data** — USDA FoodData Central (keyless via DEMO_KEY), Nutritionix (restaurant coverage, free key), Open Food Facts (keyless). MyFitnessPal has no public API.
 
 ## Architecture
 
 ```
 src/
-├── index.html              # Main window markup
-├── styles.css              # Markdown rendering styles
-├── main.js                 # Frontend logic (rendering, file handling)
+├── index.html              # App shell (header, tabs, view containers)
+├── styles.css              # Design system, light/dark via prefers-color-scheme
+├── js/
+│   ├── app.js              # UI layer: diary, workouts, trends, settings, modals
+│   ├── store.js            # Persistence (injected storage backend) — pure, tested
+│   ├── nutrition.js        # Date helpers + calorie/macro math — pure, tested
+│   └── providers.js        # Food-database search/parsers — pure parsers, tested
 src-tauri/
-├── src/
-│   └── main.rs             # Tauri backend (file I/O, file watching, window management)
-├── Cargo.toml              # Rust dependencies
-├── tauri.conf.json         # Tauri configuration
-package.json                # Node dependencies (dev tooling)
+├── src/                    # Minimal Tauri shell (no custom Rust commands)
+├── tauri.conf.json         # Window config + CSP (allowlists the food API hosts)
+tests/                      # node:test suites with API response fixtures
 ```
 
-- **Frontend**: Vanilla HTML/CSS/JS. Markdown parsed and rendered in the webview.
-- **Backend (Rust/Tauri)**: Handles file reading, file system watching, and native dialogs.
-- **No frameworks**: No React, no bundler beyond what Tauri provides.
+- **Frontend**: Vanilla HTML/CSS/JS ES modules rendered in the webview; also runs in any browser.
+- **Backend (Rust/Tauri)**: Bare shell only — file access isn't needed; food APIs are called with `fetch` from the frontend (CSP `connect-src` allowlists them).
+- **Testing**: `store.js`, `nutrition.js`, `providers.js` take injected storage/fetch so they run under `node --test` with mocks/fixtures. UI is exercised by a Playwright smoke script (not checked in; drive `npm run dev:web`).
 
 ## Dependencies
 
-- **Tauri** — Desktop shell (system webview + Rust backend)
-- **marked** (or similar) — Markdown-to-HTML parsing
-- **highlight.js** — Code block syntax highlighting
-- **notify** (Rust crate) — File system watching
+- **Tauri** — Desktop shell (system webview + Rust backend); no other Rust deps
+- **No runtime JS dependencies** — the frontend is dependency-free vanilla JS
+- **Food data APIs** (network, from the frontend): USDA FoodData Central, Nutritionix v2, Open Food Facts
 
 ---
 
