@@ -13,5 +13,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-# Pin transitive deps to versions compatible with Rust 1.83
+# Not used directly: pins tauri's transitive `time` dependency below 0.3.37,
+# whose later releases require a newer rustc than older stable toolchains.
 time = ">=0.3.0, <0.3.37"

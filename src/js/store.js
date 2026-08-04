@@ -1,8 +1,22 @@
 // Local-first persistence. The storage backend is injected (window.localStorage in
 // the app, an in-memory mock in tests) — everything else is plain data.
+//
+// Anything read from storage or importJSON is untrusted: normalization coerces
+// shapes/numbers here so the UI layer never renders or computes on junk.
+
+import { MEALS } from './nutrition.js';
 
 export const STORAGE_KEY = 'tally.data.v1';
 const RECENT_FOODS_CAP = 30;
+
+const toNum = (v, fallback = 0) => {
+  if (v == null || (typeof v === 'string' && v.trim() === '')) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const isPlainObject = (x) => x != null && typeof x === 'object' && !Array.isArray(x);
+const plainObjects = (arr) => (Array.isArray(arr) ? arr.filter(isPlainObject) : []);
 
 export function makeId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -36,13 +50,77 @@ export function defaultData() {
   };
 }
 
-function mergeSettings(saved = {}) {
+function mergeSettings(saved) {
+  const s = isPlainObject(saved) ? saved : {};
   const base = defaultSettings();
   const providers = { ...base.providers };
   for (const key of Object.keys(providers)) {
-    providers[key] = { ...providers[key], ...(saved.providers?.[key] || {}) };
+    const sp = s.providers?.[key];
+    providers[key] = { ...providers[key], ...(isPlainObject(sp) ? sp : {}) };
   }
-  return { ...base, ...saved, providers };
+  const merged = { ...base, ...s, providers };
+  for (const k of ['calorieGoal', 'proteinGoal', 'carbsGoal', 'fatGoal']) {
+    merged[k] = toNum(merged[k], base[k]);
+  }
+  merged.weightUnit = merged.weightUnit === 'kg' ? 'kg' : 'lb';
+  merged.creditExercise = Boolean(merged.creditExercise);
+  return merged;
+}
+
+function sanitizeDiaryEntry(e) {
+  const servings = toNum(e.servings, 1) > 0 ? toNum(e.servings, 1) : 1;
+  const totals = {
+    calories: toNum(e.calories),
+    protein: toNum(e.protein),
+    carbs: toNum(e.carbs),
+    fat: toNum(e.fat),
+  };
+  const per = isPlainObject(e.per)
+    ? {
+        calories: toNum(e.per.calories),
+        protein: toNum(e.per.protein),
+        carbs: toNum(e.per.carbs),
+        fat: toNum(e.per.fat),
+      }
+    : { // derive per-serving values so editing servings rescales correctly
+        calories: totals.calories / servings,
+        protein: totals.protein / servings,
+        carbs: totals.carbs / servings,
+        fat: totals.fat / servings,
+      };
+  return {
+    ...e,
+    id: String(e.id ?? makeId()),
+    date: String(e.date ?? ''),
+    meal: MEALS.includes(e.meal) ? e.meal : 'snacks',
+    name: String(e.name ?? ''),
+    brand: String(e.brand ?? ''),
+    servingLabel: String(e.servingLabel ?? ''),
+    servings,
+    per,
+    ...totals,
+    createdAt: toNum(e.createdAt),
+  };
+}
+
+function sanitizeWorkout(w) {
+  const type = w.type === 'cardio' ? 'cardio' : 'strength';
+  return {
+    ...w,
+    id: String(w.id ?? makeId()),
+    date: String(w.date ?? ''),
+    type,
+    name: String(w.name ?? ''),
+    notes: String(w.notes ?? ''),
+    sets: type === 'strength'
+      ? plainObjects(w.sets).map((s) => ({ reps: toNum(s.reps), weight: toNum(s.weight) }))
+      : null,
+    durationMin: type === 'cardio' ? toNum(w.durationMin) : null,
+    distance: type === 'cardio' ? (toNum(w.distance) || null) : null,
+    distanceUnit: w.distanceUnit === 'km' ? 'km' : 'mi',
+    caloriesBurned: toNum(w.caloriesBurned),
+    createdAt: toNum(w.createdAt),
+  };
 }
 
 export class Store {
@@ -68,15 +146,14 @@ export class Store {
   }
 
   #normalize(parsed) {
-    if (!parsed || typeof parsed !== 'object') return defaultData();
-    const base = defaultData();
+    if (!isPlainObject(parsed)) return defaultData();
     return {
       version: 1,
       settings: mergeSettings(parsed.settings),
-      diary: Array.isArray(parsed.diary) ? parsed.diary : base.diary,
-      workouts: Array.isArray(parsed.workouts) ? parsed.workouts : base.workouts,
-      customFoods: Array.isArray(parsed.customFoods) ? parsed.customFoods : base.customFoods,
-      recentFoods: Array.isArray(parsed.recentFoods) ? parsed.recentFoods : base.recentFoods,
+      diary: plainObjects(parsed.diary).map(sanitizeDiaryEntry),
+      workouts: plainObjects(parsed.workouts).map(sanitizeWorkout),
+      customFoods: plainObjects(parsed.customFoods),
+      recentFoods: plainObjects(parsed.recentFoods),
     };
   }
 
@@ -202,6 +279,7 @@ export class Store {
 
   removeCustomFood(id) {
     this.data.customFoods = this.data.customFoods.filter((f) => f.id !== id);
+    this.data.recentFoods = this.data.recentFoods.filter((f) => f.key !== `custom:${id}`);
     this.save();
   }
 

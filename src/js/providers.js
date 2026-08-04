@@ -28,6 +28,16 @@ export const SOURCE_LABELS = {
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
+// AbortSignal.timeout needs WebKit 2.38+ / Chrome 103+; fall back for older webviews.
+function timeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 // ---- USDA FoodData Central ----
 // Search results report nutrients per 100 g. Branded items carry a serving size we
 // scale to; everything else is presented per 100 g.
@@ -89,7 +99,7 @@ async function searchUsda(query, settings, fetchFn) {
     dataType: 'Branded,Foundation,SR Legacy,Survey (FNDDS)',
   });
   const res = await fetchFn(`https://api.nal.usda.gov/fdc/v1/foods/search?${params}`, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: timeoutSignal(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(res.status === 429 ? 'rate limit hit — add a free api.data.gov key in Settings' : `HTTP ${res.status}`);
   return parseUsdaSearch(await res.json());
@@ -170,7 +180,7 @@ async function searchNutritionix(query, settings, fetchFn) {
   const params = new URLSearchParams({ query });
   const res = await fetchFn(`https://trackapi.nutritionix.com/v2/search/instant?${params}`, {
     headers: nutritionixHeaders(settings),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: timeoutSignal(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(res.status === 401 ? 'check your App ID / App Key in Settings' : `HTTP ${res.status}`);
   return parseNutritionixInstant(await res.json());
@@ -185,14 +195,14 @@ export async function resolveFood(food, providerSettings, fetchFn = fetch) {
     const params = new URLSearchParams({ nix_item_id: food.resolveRef.id });
     res = await fetchFn(`https://trackapi.nutritionix.com/v2/search/item?${params}`, {
       headers: nutritionixHeaders(settings),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: timeoutSignal(FETCH_TIMEOUT_MS),
     });
   } else {
     res = await fetchFn('https://trackapi.nutritionix.com/v2/natural/nutrients', {
       method: 'POST',
       headers: nutritionixHeaders(settings),
       body: JSON.stringify({ query: food.resolveRef?.query || food.name }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: timeoutSignal(FETCH_TIMEOUT_MS),
     });
   }
   if (!res.ok) throw new Error(`Couldn't load nutrition details (HTTP ${res.status}).`);
@@ -212,8 +222,14 @@ export function parseOffSearch(json) {
 
     const perServing = num(n['energy-kcal_serving']);
     const per100 = num(n['energy-kcal_100g']);
+    // Only use the per-serving basis when its macros exist too — otherwise a
+    // product with only *_100g macros would log N calories with silent-zero macros.
+    const hasServingMacros = ['proteins_serving', 'carbohydrates_serving', 'fat_serving']
+      .some((k) => num(n[k]) != null);
+    const has100gMacros = ['proteins_100g', 'carbohydrates_100g', 'fat_100g']
+      .some((k) => num(n[k]) != null);
     let food = null;
-    if (perServing != null && p.serving_size) {
+    if (perServing != null && p.serving_size && (hasServingMacros || !has100gMacros)) {
       food = {
         servingLabel: String(p.serving_size).trim(),
         calories: perServing,
@@ -254,7 +270,7 @@ async function searchOff(query, _settings, fetchFn) {
     fields: 'code,product_name,brands,serving_size,nutriments',
   });
   const res = await fetchFn(`https://world.openfoodfacts.org/cgi/search.pl?${params}`, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: timeoutSignal(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseOffSearch(await res.json());

@@ -149,6 +149,83 @@ test('updateSettings patches one provider without clobbering others', () => {
   assert.equal(store.settings.providers.nutritionix.appId, 'id');
 });
 
+// ---- regression tests: untrusted persisted data (code-review findings) ----
+
+test('importJSON tolerates settings:null instead of throwing', () => {
+  const store = fresh();
+  const result = store.importJSON('{"version":1,"diary":[],"workouts":[],"settings":null}');
+  assert.equal(result.ok, true);
+  assert.equal(store.settings.calorieGoal, 2200);
+  assert.equal(store.settings.providers.usda.enabled, true);
+});
+
+test('importJSON drops non-object array members instead of bricking renders', () => {
+  const store = fresh();
+  const result = store.importJSON(JSON.stringify({
+    version: 1,
+    diary: [null, 7, [], { date: '2026-08-04', meal: 'lunch', name: 'Real', calories: 100, servings: 1 }],
+    workouts: [null, { date: '2026-08-04', type: 'cardio', name: 'Bike', durationMin: 20 }],
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(store.data.diary.length, 1);
+  assert.equal(store.diaryFor('2026-08-04')[0].name, 'Real');
+  assert.equal(store.workoutsFor('2026-08-04').length, 1);
+});
+
+test('imported entries with unknown meals are reassigned to snacks, not hidden', () => {
+  const store = fresh();
+  store.importJSON(JSON.stringify({
+    version: 1, workouts: [],
+    diary: [{ date: '2026-08-04', meal: 'brunch', name: 'Waffles', calories: 400, servings: 1 }],
+  }));
+  assert.equal(store.diaryFor('2026-08-04')[0].meal, 'snacks');
+});
+
+test('imported non-numeric settings are coerced to defaults', () => {
+  const store = fresh();
+  store.importJSON(JSON.stringify({
+    version: 1, diary: [], workouts: [],
+    settings: { calorieGoal: '<img src=x>', proteinGoal: 'NaN', weightUnit: 'stone', creditExercise: 1 },
+  }));
+  assert.equal(store.settings.calorieGoal, 2200);
+  assert.equal(store.settings.proteinGoal, 150);
+  assert.equal(store.settings.weightUnit, 'lb');
+  assert.equal(store.settings.creditExercise, true);
+});
+
+test('imported entries without per get per-serving values derived (no double-scaling on edit)', () => {
+  const store = fresh();
+  store.importJSON(JSON.stringify({
+    version: 1, workouts: [],
+    diary: [{ date: '2026-08-04', meal: 'lunch', name: 'Soup', calories: 300, protein: 12, servings: 2 }],
+  }));
+  const e = store.diaryFor('2026-08-04')[0];
+  assert.equal(e.per.calories, 150);
+  assert.equal(e.per.protein, 6);
+});
+
+test('imported workout set values are coerced to numbers', () => {
+  const store = fresh();
+  store.importJSON(JSON.stringify({
+    version: 1, diary: [],
+    workouts: [{
+      date: '2026-08-04', type: 'strength', name: 'Bench',
+      sets: [{ reps: '10', weight: '135' }, null, { reps: {}, weight: 'x' }],
+    }],
+  }));
+  const w = store.workoutsFor('2026-08-04')[0];
+  assert.deepEqual(w.sets, [{ reps: 10, weight: 135 }, { reps: 0, weight: 0 }]);
+});
+
+test('removeCustomFood also removes the food from recents', () => {
+  const store = fresh();
+  const f = store.addCustomFood({ name: 'Shake', calories: 220 });
+  store.rememberFood(f);
+  store.rememberFood({ key: 'usda:1', name: 'Eggs' });
+  store.removeCustomFood(f.id);
+  assert.deepEqual(store.recentFoods.map((x) => x.key), ['usda:1']);
+});
+
 test('clearAll resets to defaults', () => {
   const store = fresh();
   store.addDiaryEntry({ date: '2026-08-04', meal: 'lunch', name: 'X', calories: 1 });

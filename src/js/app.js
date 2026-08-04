@@ -28,6 +28,7 @@ function fmtCal(n) {
 }
 
 function num(value, fallback = 0) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
@@ -84,7 +85,7 @@ function renderDiary() {
       <div class="macro">
         <div class="macro-top">
           <span class="macro-name">${name}</span>
-          <span class="macro-val">${round1(value)} / ${goal} g</span>
+          <span class="macro-val">${round1(value)} / ${esc(goal)} g</span>
         </div>
         <div class="progress"><div class="progress-fill" style="width:${mp}%"></div></div>
       </div>`;
@@ -371,9 +372,9 @@ async function runFoodSearch() {
   if (resultsEl) resultsEl.innerHTML = resultsHtml();
 
   const { foods, errors } = await searchFoods(query, store.settings.providers);
+  foodModal.loading = false;
   // Ignore stale responses typed over
   if (foodModal.query.trim() !== query) return;
-  foodModal.loading = false;
   foodModal.results = foods;
   foodModal.errors = errors;
   const el = $('#food-results');
@@ -415,6 +416,7 @@ async function selectFood(food) {
       foodModal.resolveError = err.message || 'Request failed.';
     }
     foodModal.resolving = false;
+    if (!$('#modal-root .modal')) return; // user closed the modal while resolving
   }
   renderPortionStep();
 }
@@ -585,7 +587,7 @@ function renderWorkouts() {
     let meta = [];
     if (w.type === 'strength') {
       const sets = (w.sets || []).map((s, i) =>
-        `<li>Set ${i + 1}: ${s.reps} reps × ${s.weight} ${unit}</li>`).join('');
+        `<li>Set ${i + 1}: ${esc(s.reps)} reps × ${esc(s.weight)} ${esc(unit)}</li>`).join('');
       detail = `<ul class="sets">${sets}</ul>`;
       meta.push(`${(w.sets || []).length} sets`, `${strengthVolume(w.sets).toLocaleString()} ${unit} volume`);
     } else {
@@ -644,20 +646,31 @@ function openWorkoutModal(id = null) {
   renderWorkoutModal(existing);
 }
 
-function renderWorkoutModal(existing = null) {
+// `draft` carries unsaved form values across intra-modal re-renders (type toggle,
+// add/remove set) so typed-but-unsaved fields aren't lost.
+function renderWorkoutModal(existing = null, draft = null) {
   const unit = store.settings.weightUnit;
   const isStrength = workoutModal.type === 'strength';
   const names = store.exerciseNames();
+  const editing = !!workoutModal.id;
+  const v = {
+    name: draft?.name ?? existing?.name ?? '',
+    durationMin: draft?.durationMin ?? existing?.durationMin ?? 30,
+    distance: draft?.distance ?? existing?.distance ?? '',
+    distanceUnit: draft?.distanceUnit ?? existing?.distanceUnit ?? 'mi',
+    caloriesBurned: draft?.caloriesBurned ?? existing?.caloriesBurned ?? '',
+    notes: draft?.notes ?? existing?.notes ?? '',
+  };
 
   const setsHtml = workoutModal.sets.map((s, i) => `
     <div class="set-editor-row">
       <span class="set-num">Set ${i + 1}</span>
       <input class="input" type="number" min="0" step="1" data-set-reps="${i}" value="${esc(s.reps)}" aria-label="Reps"> reps
-      <input class="input" type="number" min="0" step="0.5" data-set-weight="${i}" value="${esc(s.weight)}" aria-label="Weight"> ${unit}
+      <input class="input" type="number" min="0" step="0.5" data-set-weight="${i}" value="${esc(s.weight)}" aria-label="Weight"> ${esc(unit)}
       <button type="button" class="btn-icon" data-remove-set="${i}" aria-label="Remove set">×</button>
     </div>`).join('');
 
-  modalShell(existing ? 'Edit workout' : 'Log workout', `
+  modalShell(editing ? 'Edit workout' : 'Log workout', `
     <div class="modal-body">
       <div class="seg" role="tablist" aria-label="Workout type">
         <button type="button" class="${isStrength ? 'active' : ''}" data-wtype="strength">Strength</button>
@@ -666,7 +679,7 @@ function renderWorkoutModal(existing = null) {
       <form id="workout-form">
         <label class="field">${isStrength ? 'Exercise' : 'Activity'}
           <input class="input" name="name" required list="exercise-names" autocomplete="off"
-                 placeholder="${isStrength ? 'e.g. Bench press' : 'e.g. Running'}" value="${esc(existing?.name || '')}">
+                 placeholder="${isStrength ? 'e.g. Bench press' : 'e.g. Running'}" value="${esc(v.name)}">
           <datalist id="exercise-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
         </label>
         ${isStrength ? `
@@ -675,37 +688,47 @@ function renderWorkoutModal(existing = null) {
         ` : `
           <div class="field-row">
             <label class="field">Duration (min)
-              <input class="input" name="durationMin" type="number" min="1" step="1" required value="${esc(existing?.durationMin || 30)}">
+              <input class="input" name="durationMin" type="number" min="1" step="1" required value="${esc(v.durationMin)}">
             </label>
             <label class="field">Distance (optional)
-              <input class="input" name="distance" type="number" min="0" step="0.01" value="${esc(existing?.distance || '')}">
+              <input class="input" name="distance" type="number" min="0" step="0.01" value="${esc(v.distance)}">
             </label>
             <label class="field">Unit
               <select class="input" name="distanceUnit">
-                <option value="mi" ${existing?.distanceUnit !== 'km' ? 'selected' : ''}>mi</option>
-                <option value="km" ${existing?.distanceUnit === 'km' ? 'selected' : ''}>km</option>
+                <option value="mi" ${v.distanceUnit !== 'km' ? 'selected' : ''}>mi</option>
+                <option value="km" ${v.distanceUnit === 'km' ? 'selected' : ''}>km</option>
               </select>
             </label>
           </div>
         `}
         <div class="field-row" style="margin-top:10px;">
           <label class="field">Calories burned (optional)
-            <input class="input" name="caloriesBurned" type="number" min="0" step="1" value="${esc(existing?.caloriesBurned || '')}">
+            <input class="input" name="caloriesBurned" type="number" min="0" step="1" value="${esc(v.caloriesBurned)}">
           </label>
           <label class="field">Notes (optional)
-            <input class="input" name="notes" value="${esc(existing?.notes || '')}">
+            <input class="input" name="notes" value="${esc(v.notes)}">
           </label>
         </div>
-        <button class="btn btn-primary" type="submit" style="margin-top:4px;">${existing ? 'Save changes' : 'Save workout'}</button>
+        <button class="btn btn-primary" type="submit" style="margin-top:4px;">${editing ? 'Save changes' : 'Save workout'}</button>
       </form>
     </div>`);
 
+  // Snapshot every form field (fields absent in the current mode fall back to
+  // the values this render was seeded with).
+  const readForm = () => ({
+    name: $('#workout-form [name="name"]')?.value ?? v.name,
+    durationMin: $('#workout-form [name="durationMin"]')?.value ?? v.durationMin,
+    distance: $('#workout-form [name="distance"]')?.value ?? v.distance,
+    distanceUnit: $('#workout-form [name="distanceUnit"]')?.value ?? v.distanceUnit,
+    caloriesBurned: $('#workout-form [name="caloriesBurned"]')?.value ?? v.caloriesBurned,
+    notes: $('#workout-form [name="notes"]')?.value ?? v.notes,
+  });
+
   $$('#modal-root [data-wtype]').forEach((b) => b.addEventListener('click', () => {
     if (workoutModal.type === b.dataset.wtype) return;
+    syncSets();
     workoutModal.type = b.dataset.wtype;
-    // keep whatever the user already typed for the name
-    const name = $('#workout-form [name="name"]').value;
-    renderWorkoutModal(existing ? { ...existing, name } : { name });
+    renderWorkoutModal(existing, readForm());
   }));
 
   const syncSets = () => {
@@ -719,16 +742,14 @@ function renderWorkoutModal(existing = null) {
     syncSets();
     const last = workoutModal.sets[workoutModal.sets.length - 1];
     workoutModal.sets.push({ reps: last?.reps ?? 10, weight: last?.weight ?? 0 });
-    const name = $('#workout-form [name="name"]').value;
-    renderWorkoutModal(existing ? { ...existing, name } : { name });
+    renderWorkoutModal(existing, readForm());
   });
 
   $$('#modal-root [data-remove-set]').forEach((b) => b.addEventListener('click', () => {
     syncSets();
     workoutModal.sets.splice(Number(b.dataset.removeSet), 1);
     if (!workoutModal.sets.length) workoutModal.sets.push({ reps: 10, weight: 0 });
-    const name = $('#workout-form [name="name"]').value;
-    renderWorkoutModal(existing ? { ...existing, name } : { name });
+    renderWorkoutModal(existing, readForm());
   }));
 
   $('#workout-form').addEventListener('submit', (e) => {
@@ -786,7 +807,9 @@ function renderTrends() {
   const loggedDays = byDay.filter((d) => d.logged);
   const avg = loggedDays.length
     ? Math.round(loggedDays.reduce((s, d) => s + d.calories, 0) / loggedDays.length) : 0;
-  const onBudget = loggedDays.filter((d) => d.calories <= goal).length;
+  // Same budget verdict the diary shows: exercise calories count when credited.
+  const netFor = (d) => d.calories - (store.settings.creditExercise ? d.burned : 0);
+  const onBudget = loggedDays.filter((d) => netFor(d) <= goal).length;
   const totalWorkouts = byDay.reduce((s, d) => s + d.workouts, 0);
   const totalBurned = byDay.reduce((s, d) => s + d.burned, 0);
 
@@ -795,7 +818,7 @@ function renderTrends() {
 
   const bars = byDay.map((d) => {
     const pct = Math.max(d.logged ? 2 : 1.2, (d.calories / max) * 100);
-    const over = goal > 0 && d.calories > goal;
+    const over = goal > 0 && netFor(d) > goal;
     const label = `${formatDateLabel(d.date)}: ${d.logged ? `${fmtCal(d.calories)} cal` : 'nothing logged'}`
       + (d.workouts ? `, ${d.workouts} workout${d.workouts === 1 ? '' : 's'}` : '');
     const tip = `${formatDateLabel(d.date)}\n${d.logged ? `${fmtCal(d.calories)} cal` : 'not logged'}${d.workouts ? ` · ${d.workouts} 🏋` : ''}`;
@@ -962,10 +985,15 @@ function renderSettings() {
   $('#import-data').addEventListener('click', () => $('#import-file').click());
   $('#import-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
-    const result = store.importJSON(await file.text());
-    if (result.ok) { toast('Backup imported'); render(); }
-    else toast(result.error);
+    try {
+      const result = store.importJSON(await file.text());
+      if (result.ok) { toast('Backup imported'); render(); }
+      else toast(result.error);
+    } catch {
+      toast("Couldn't import that file.");
+    }
   });
 
   $('#clear-data').addEventListener('click', () => {

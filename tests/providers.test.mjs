@@ -199,6 +199,22 @@ test('parseOffSearch skips unusable products', () => {
   assert.equal(parseOffSearch(offFixture).length, 2);
 });
 
+test('parseOffSearch avoids per-serving calories with silent-zero macros', () => {
+  // kcal_serving exists but macros only exist per 100 g → must use the 100 g basis
+  const [food] = parseOffSearch({
+    products: [{
+      code: '444', product_name: 'Granola', serving_size: '55 g',
+      nutriments: {
+        'energy-kcal_serving': 220, 'energy-kcal_100g': 400,
+        proteins_100g: 10, carbohydrates_100g: 60, fat_100g: 12,
+      },
+    }],
+  });
+  assert.equal(food.servingLabel, '100 g');
+  assert.equal(food.calories, 400);
+  assert.equal(food.protein, 10);
+});
+
 // ---- orchestration ----
 
 function fetchStub(routes) {
